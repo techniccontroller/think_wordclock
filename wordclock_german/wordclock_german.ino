@@ -168,16 +168,24 @@ void loop() {
 
   // check for a new time on the DCF receiver
   checkForNewDCFTime(now);
-  
+
+  // convert time to a grid representation
   timeToArray(now.hour(), now.minute());
+  // clear matrix
   matrix.fillScreen(0);
+
+  // if color mode is set to 0, a color wheel will be shown in background
   if(activeColorID == 0){
+    // draw colorwheel on matrix
     drawCircleOnMatrix(offset);
     offset = (offset + 1)%256;
   }
+
+  // draw grid reprentation of time to matrix
   drawOnMatrix();
   matrix.show();
 
+  // change depending on color mode the refreshing time of clock
   if(activeColorID == 0){
     delay(500);
   } else {
