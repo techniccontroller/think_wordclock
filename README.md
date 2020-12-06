@@ -4,6 +4,7 @@ Arduino sourcecode for my DIY Wordclock.
 ## Features
 This project includes following features:
 - Arduino Nano as microcontroller
+- 114 NeoPixel LEDs WS2812b as Zic-Zac matrix starting from top left  
 - RTC module DS3231
 - DCF77 receiver for german clock signal
 - 7 different color modes (switched when turn off/on within 10 seconds after startup)
