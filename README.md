@@ -11,7 +11,11 @@ This project includes following features:
 - light sensor to adjust brightness of LEDs to environment
 
 ## Full Tutorial
-The full tutorial how to build this Wordclock is published on https://think-thi.de/2020/12/06/diy-wortuhr-mit-arduino-und-neopixel/.
+The full tutorial how to build this Wordclock is published on 
+
+https://think-thi.de/2020/12/06/diy-wortuhr-mit-arduino-und-neopixel/
+
+https://techniccontroller.de/word-clock-with-arduino-and-neopixel/
 
 ## Used Libraries
 To be able to use this sourcecode, you need to install following libraries in Arduino IDE. 
