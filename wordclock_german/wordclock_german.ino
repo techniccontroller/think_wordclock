@@ -2,6 +2,10 @@
  * Sourcecode for wordclock (german)
  * 
  * created by techniccontroller 06.12.2020
+ * 
+ * changelog:
+ * 03.04.2021: add DCF77 signal quality check
+ * 04.04.2021: add update intervall for RTC update
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 
@@ -64,6 +68,8 @@ int valLight = 100;             // currentvalue of light sensor
 int brightness = 20;            // current brughtness for leds
 int activeColorID = 0;          // current active color mode
 int offset = 0;                 // offset for colorwheel
+long updateIntervall = 120000;       // Updateintervall 2 Minuten
+long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
 
 // representation of matrix as 2D array
 int grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
@@ -81,6 +87,8 @@ int grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
 void printDateTime(DateTime datetime);
+void checkDCFSignal();
+int DCF77signalQuality(int pulses);
 void checkForNewDCFTime(DateTime now);
 void gridAddPixel(uint8_t x, uint8_t y);
 void gridFlush(void);
@@ -90,6 +98,9 @@ void timeToArray(uint8_t hours, uint8_t minutes);
 void setup() {
   // enable serial output
   Serial.begin(9600);
+
+  // Measure DCF signal quality
+  //checkDCFSignal();
 
   // Init DCF
   DCF.Start();
@@ -123,9 +134,13 @@ void setup() {
   Serial.print("active color: ");
   Serial.println(activeColorID);
 
+  Serial.println("Buildtime: ");
+  Serial.println(F(__DATE__));
+  Serial.println(F(__TIME__));
+
   // check if RTC battery was changed
-  if (rtc.lostPower()) {
-    Serial.println("RTC lost power, let's set the time!");
+  if (rtc.lostPower() || DateTime(F(__DATE__), F(__TIME__)) > rtc.now()) {
+    Serial.println("RTC lost power or RTC time is behind build time, let's set the time!");
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -159,18 +174,19 @@ void loop() {
 
   
   // Print current date and time
-  DateTime now = rtc.now();
-  printDateTime(now);
+  DateTime rtctime = rtc.now();
+  Serial.print("RTC: ");
+  printDateTime(rtctime);
 
   Serial.print("Temperature: ");
   Serial.print(rtc.getTemperature());
   Serial.println(" C");
 
   // check for a new time on the DCF receiver
-  checkForNewDCFTime(now);
+  checkForNewDCFTime(rtctime);
 
   // convert time to a grid representation
-  timeToArray(now.hour(), now.minute());
+  timeToArray(rtctime.hour(), rtctime.minute());
   // clear matrix
   matrix.fillScreen(0);
 
@@ -238,35 +254,92 @@ void printDateTime(DateTime datetime){
   Serial.println();
 }
 
+void checkDCFSignal(){
+  pinMode(DCF_PIN, INPUT);
+  Serial.println("Measure signal quality DCF77 (please wait)");
+  Serial.println("NO SIGNAL   <- |                                          <- MISERABLE <- |  BAD      <- |          GOOD         | -> BAD       | -> MISERABLE ->");
+
+  //Do measurement over 10 impules, one impulse takes exactly one Second
+  int q = DCF77signalQuality(10);
+  //If no change between HIGH and LOW was detected at the connection, 
+  //this means in 99.99% of all cases that the DCF receiver does not work 
+  //because with extremely poor reception you have changes, but you cannot evaluate them. 
+  if (!q) {Serial.print("# (Check connection!)");}
+  for (int i = 0; i < q; i++) {
+    Serial.print(">");
+  }
+  Serial.println("");
+  
+}
+
+// check signalquality of DCF77 receiver (code from Ralf Bohnen, 2013
+int DCF77signalQuality(int pulses) {
+  int prevSensorValue=0;
+  unsigned long loopTime = 10000; //Impuls Länge genau eine Sekunde
+  //Da wir ja mitten in einem Impuls einsteigen könnten, verwerfen wir den ersten.
+  int rounds = -1; 
+  unsigned long gagingStart = 0;
+  unsigned long waitingPeriod = 0;
+  int overallChange = 0;
+  int change = 0;
+
+  while (true) {
+    //Unsere Schleife soll das Eingangssignal (LOW oder HIGH) 10 mal pro
+    //Sekunde messen um das sicherzustellen, messen wir dessen Ausführungszeit.
+    gagingStart = micros();
+    int sensorValue = digitalRead(DCF_PIN);
+    //Wenn von LOW nach HIGH gewechselt wird beginnt ein neuer Impuls
+    if (sensorValue==1 && prevSensorValue==0) { 
+      rounds++;
+      if (rounds > 0 && rounds < pulses + 1) {overallChange+= change;}
+      if (rounds == pulses) { return overallChange /pulses;}
+      change = 0; 
+    }
+    prevSensorValue = sensorValue;
+    change++;
+
+    //Ein Wechsel zwichen LOW und HIGH müsste genau alle 100 Durchläufe stattfinden
+    //wird er größer haben wir kein Empfang
+    //300 habe ich als guten Wert ermittelt, ein höherer Wert würde die Aussage festigen
+    //erhöht dann aber die Zeit.
+    if (change > 300) {return 0;}
+    //Berechnen und anpassen der Ausführungszeit
+    waitingPeriod = loopTime - (micros() - gagingStart);
+    delayMicroseconds(waitingPeriod);
+  }
+}
+
 // Checks for new time from DCF77 and updates RTC time
 void checkForNewDCFTime(DateTime now){
   // check if new time from DCF77 is available
   time_t DCFtime = DCF.getTime(); 
   if (DCFtime!=0)
   {
+    setTime(DCFtime);
     // print new time from DCF77
-    DateTime currentDCFtime = DateTime(year(DCFtime), month(DCFtime), day(DCFtime), hour(DCFtime),
-           minute(DCFtime), second(DCFtime));
-    Serial.println("Got new time from DCF:");
-    snprintf(time_s,sizeof(time_s),"%.2d:%.2d:%.2d" , hour(DCFtime), minute(DCFtime), second(DCFtime));
+    DateTime currentDCFtime = DateTime(year(), month(), day(), hour(), minute(), second());
+    Serial.print("Got new time from DCF:");
+    printDateTime(currentDCFtime);
+    /*snprintf(time_s,sizeof(time_s),"%.2d:%.2d:%.2d" , hour(), minute(), second());
     time_s[strlen(time_s)] = '\0';
-    snprintf(date_s,sizeof(date_s),"%.2d.%.2d.%.4d" , day(DCFtime), month(DCFtime), year(DCFtime));
+    snprintf(date_s,sizeof(date_s),"%.2d.%.2d.%.4d" , day(), month(), year());
     date_s[strlen(date_s)] = '\0';
     Serial.print(time_s); 
     Serial.print("  "); 
-    Serial.println(date_s);
+    Serial.println(date_s);*/
 
     // calc the difference to current time of RTC
-    int diff = abs(currentDCFtime.minute() - now.minute());
-    int norm_diff = diff > 30 ? abs(diff-60): diff;
-    Serial.print("Current diff: ");
-    Serial.print(norm_diff);
-    Serial.println(" minutes");
+    //int diff = abs(currentDCFtime.minute() - now.minute());
+    //int norm_diff = diff > 30 ? abs(diff-60): diff;
+    //Serial.print("Current diff: ");
+    //Serial.print(norm_diff);
+    //Serial.println(" minutes");
 
-    // if difference is larger than 3 minutes update RTC time
-    if(norm_diff > 3){
+    // id update intervall is over update RTC time with DCF time
+    if((millis() - updateTimer) > updateIntervall){
       Serial.println("Adjust RTC time");
       rtc.adjust(currentDCFtime);
+      updateTimer = millis();
     }
   }
 }
