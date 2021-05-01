@@ -13,7 +13,7 @@ This project includes following features:
 ## Full Tutorial
 The full tutorial how to build this Wordclock is published on 
 
-https://think-thi.de/2020/12/06/diy-wortuhr-mit-arduino-und-neopixel/
+https://think-thi.de/2020/12/08/diy-wortuhr-mit-arduino-und-neopixel/
 
 https://techniccontroller.de/word-clock-with-arduino-and-neopixel/
 
