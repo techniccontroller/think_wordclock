@@ -72,17 +72,32 @@ long updateIntervall = 120000;       // Updateintervall 2 Minuten
 long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
 
 // representation of matrix as 2D array
-int grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0}};
+uint8_t grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0},
+                              {0,0,0,0,0,0,0,0,0,0,0}};
+
+// representation of backgroundpattern matrix as 2D array
+uint8_t backgroundpattern[height][width] = {{0,0,0,0,0,0,0,1,1,1,1},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0},
+                                            {0,0,0,0,0,0,0,0,0,0,0}};
+// define color of background pattern
+uint16_t backgroundpatternColor = matrix.Color(0, 0, 255); // blue
 
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
@@ -214,9 +229,14 @@ void loop() {
 void drawCircleOnMatrix(int offset){
   for(int r = 0; r < height; r++){
     for(int c = 0; c < width; c ++){
-      int angle = ((int)((atan2(r - centerrow, c - centercol) * (180/M_PI)) + 180) % 360);
+      // additonal condition to color just the background pattern leds with the defined Color
+      if(backgroundpattern[r][c] == 1){
+        matrix.drawPixel(c, r, backgroundpatternColor);
+      }
+      // original colorwheel code
+      /*int angle = ((int)((atan2(r - centerrow, c - centercol) * (180/M_PI)) + 180) % 360);
       int hue =  (int)(angle * 255.0/360 + offset) % 256;
-      matrix.drawPixel(c,r, Wheel(hue));
+      matrix.drawPixel(c,r, Wheel(hue));*/
     }
   }
 }
