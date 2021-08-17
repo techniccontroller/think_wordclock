@@ -6,6 +6,7 @@
  * changelog:
  * 03.04.2021: add DCF77 signal quality check
  * 04.04.2021: add update intervall for RTC update
+ * 17.08.2021: add modification to support 22 leds in a row
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 
@@ -48,7 +49,7 @@ RTC_DS3231 rtc;
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 // create Adafruit_NeoMatrix object
-Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(width, height, NEOPIXEL_PIN,
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(width*2, height, NEOPIXEL_PIN,
   NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
   NEO_MATRIX_ROWS    + NEO_MATRIX_ZIGZAG,
   NEO_GRB            + NEO_KHZ800);
@@ -216,7 +217,9 @@ void drawCircleOnMatrix(int offset){
     for(int c = 0; c < width; c ++){
       int angle = ((int)((atan2(r - centerrow, c - centercol) * (180/M_PI)) + 180) % 360);
       int hue =  (int)(angle * 255.0/360 + offset) % 256;
-      matrix.drawPixel(c,r, Wheel(hue));
+      // draw two pixel with the same color
+      matrix.drawPixel(c*2,r, Wheel(hue));
+      matrix.drawPixel((c*2)+1,r, Wheel(hue));
     }
   }
 }
@@ -365,7 +368,9 @@ void drawOnMatrix(){
     for(int z = 0; z < height; z++){
       if(grid[z][s] != 0){
         Serial.print("1 ");
-        matrix.drawPixel(s,z,colors[activeColorID]); 
+        // draw two pixel with same color
+        matrix.drawPixel(s*2,z,colors[activeColorID]);
+        matrix.drawPixel((s*2)+1,z,colors[activeColorID]);  
       }
       else{
         Serial.print("0 ");
