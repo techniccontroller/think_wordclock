@@ -7,6 +7,7 @@
  * 03.04.2021: add DCF77 signal quality check
  * 04.04.2021: add update intervall for RTC update
  * 17.08.2021: add modification to support 22 leds in a row
+ * 18.08.2021: clean up code to save dynamic memory
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 
@@ -23,11 +24,6 @@
 #define DCF_INTERRUPT 0         // Interrupt number associated with pin
 #define NEOPIXEL_PIN 6          // Connection pin to Neopixel LED strip
 int sensorPin = A6;             // analog input pin for light sensor
-
-
-// char array to save time an date as string
-char time_s[9];
-char date_s[11];
 
 // define parameters for the project
 const int width = 11;           // width of LED matirx
@@ -46,7 +42,7 @@ DCF77 DCF = DCF77(DCF_PIN,DCF_INTERRUPT);
 RTC_DS3231 rtc;
 
 // define mapping array for nicer printouts
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+char daysOfTheWeek[7][3] = {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 
 // create Adafruit_NeoMatrix object
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(width*2, height, NEOPIXEL_PIN,
@@ -88,7 +84,6 @@ int grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
 void printDateTime(DateTime datetime);
-void checkDCFSignal();
 int DCF77signalQuality(int pulses);
 void checkForNewDCFTime(DateTime now);
 void gridAddPixel(uint8_t x, uint8_t y);
@@ -100,15 +95,12 @@ void setup() {
   // enable serial output
   Serial.begin(9600);
 
-  // Measure DCF signal quality
-  //checkDCFSignal();
-
   // Init DCF
   DCF.Start();
 
   // Init RTC
   if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    Serial.println("No RTC");
     Serial.flush();
     abort();
   }
@@ -121,19 +113,11 @@ void setup() {
   long laststartseconds = 0;
   EEPROM.get(eeAddressTime, laststartseconds);
   long currentseconds = rtc.now().secondstime();
-  Serial.print("Startseconds: ");
-  Serial.println(laststartseconds);
-  Serial.print("Currentseconds: ");
-  Serial.println(currentseconds);
   if(currentseconds - laststartseconds < 10){
     activeColorID = (activeColorID+1)%7;
-    Serial.print("change color to ");
-    Serial.println(activeColorID);
     EEPROM.put(eeAddressColor, activeColorID);
   }
   EEPROM.put(eeAddressTime, currentseconds);
-  Serial.print("active color: ");
-  Serial.println(activeColorID);
 
   Serial.println("Buildtime: ");
   Serial.println(F(__DATE__));
@@ -141,7 +125,6 @@ void setup() {
 
   // check if RTC battery was changed
   if (rtc.lostPower() || DateTime(F(__DATE__), F(__TIME__)) > rtc.now()) {
-    Serial.println("RTC lost power or RTC time is behind build time, let's set the time!");
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -167,10 +150,10 @@ void loop() {
     brightness = 80-((valLight-lowerLight)*1.0/(upperLight-lowerLight))*80 + 20;
   }
 
-  Serial.print("Light: ");
+  /*Serial.print("L: ");
   Serial.println(valLight);
-  Serial.print("Brightness: ");
-  Serial.println(brightness);
+  Serial.print("B: ");
+  Serial.println(brightness);*/
   matrix.setBrightness(brightness);
 
   
@@ -178,10 +161,6 @@ void loop() {
   DateTime rtctime = rtc.now();
   Serial.print("RTC: ");
   printDateTime(rtctime);
-
-  Serial.print("Temperature: ");
-  Serial.print(rtc.getTemperature());
-  Serial.println(" C");
 
   // check for a new time on the DCF receiver
   checkForNewDCFTime(rtctime);
@@ -257,24 +236,6 @@ void printDateTime(DateTime datetime){
   Serial.println();
 }
 
-void checkDCFSignal(){
-  pinMode(DCF_PIN, INPUT);
-  Serial.println("Measure signal quality DCF77 (please wait)");
-  Serial.println("NO SIGNAL   <- |                                          <- MISERABLE <- |  BAD      <- |          GOOD         | -> BAD       | -> MISERABLE ->");
-
-  //Do measurement over 10 impules, one impulse takes exactly one Second
-  int q = DCF77signalQuality(10);
-  //If no change between HIGH and LOW was detected at the connection, 
-  //this means in 99.99% of all cases that the DCF receiver does not work 
-  //because with extremely poor reception you have changes, but you cannot evaluate them. 
-  if (!q) {Serial.print("# (Check connection!)");}
-  for (int i = 0; i < q; i++) {
-    Serial.print(">");
-  }
-  Serial.println("");
-  
-}
-
 // check signalquality of DCF77 receiver (code from Ralf Bohnen, 2013
 int DCF77signalQuality(int pulses) {
   int prevSensorValue=0;
@@ -321,26 +282,11 @@ void checkForNewDCFTime(DateTime now){
     setTime(DCFtime);
     // print new time from DCF77
     DateTime currentDCFtime = DateTime(year(), month(), day(), hour(), minute(), second());
-    Serial.print("Got new time from DCF:");
-    printDateTime(currentDCFtime);
-    /*snprintf(time_s,sizeof(time_s),"%.2d:%.2d:%.2d" , hour(), minute(), second());
-    time_s[strlen(time_s)] = '\0';
-    snprintf(date_s,sizeof(date_s),"%.2d.%.2d.%.4d" , day(), month(), year());
-    date_s[strlen(date_s)] = '\0';
-    Serial.print(time_s); 
-    Serial.print("  "); 
-    Serial.println(date_s);*/
-
-    // calc the difference to current time of RTC
-    //int diff = abs(currentDCFtime.minute() - now.minute());
-    //int norm_diff = diff > 30 ? abs(diff-60): diff;
-    //Serial.print("Current diff: ");
-    //Serial.print(norm_diff);
-    //Serial.println(" minutes");
+    /*Serial.print("DCF:");
+    printDateTime(currentDCFtime);*/
 
     // id update intervall is over update RTC time with DCF time
     if((millis() - updateTimer) > updateIntervall){
-      Serial.println("Adjust RTC time");
       rtc.adjust(currentDCFtime);
       updateTimer = millis();
     }
