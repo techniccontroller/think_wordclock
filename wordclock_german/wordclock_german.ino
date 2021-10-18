@@ -190,15 +190,23 @@ void loop() {
   // clear matrix
   matrix.fillScreen(0);
 
-  // if color mode is set to 0, a color wheel will be shown in background
-  if(activeColorID == 0){
-    // draw colorwheel on matrix
-    drawCircleOnMatrix(offset);
-    offset = (offset + 1)%256;
-  }
+  // add condition if nightmode (LEDs = OFF) should be activated
+  if(rtctime.hour() > 22 && rtctime.hour() < 6){ // turn in off LEDs between 22:00 and 6:00
+    // do nothing, matrix already cleared (see previous statment)
+  } else {
+    // do the normal job and display the time on the wordclock
 
-  // draw grid reprentation of time to matrix
-  drawOnMatrix();
+    // if color mode is set to 0, a color wheel will be shown in background
+    if(activeColorID == 0){
+      // draw colorwheel on matrix
+      drawCircleOnMatrix(offset);
+      offset = (offset + 1)%256;
+    }
+
+    // draw grid reprentation of time to matrix
+    drawOnMatrix();
+  }
+  // send the commands to the LEDs
   matrix.show();
 
   // change depending on color mode the refreshing time of clock
