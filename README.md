@@ -19,8 +19,8 @@ https://techniccontroller.de/word-clock-with-arduino-and-neopixel/
 
 ## Used Libraries
 To be able to use this sourcecode, you need to install following libraries in Arduino IDE.
-I added also my used versions of the libaries in this repository. 
-In case of some incompatibility issues please use my provided versions.
+I have also included the versions of the libraries I use in this repository. 
+In case of incompatibility problems, please use the versions provided by me.
 
 - https://github.com/adafruit/RTClib
 - https://github.com/PaulStoffregen/Time
