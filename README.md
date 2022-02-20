@@ -1,6 +1,10 @@
 # Think Wordclock
 Arduino sourcecode for my DIY Wordclock.
 
+<img src="https://techniccontroller.de/wp-content/uploads/1060178-938x1024.jpg" width="400px" title="Wordclock"/>
+
+
+
 ## Features
 This project includes following features:
 - Arduino Nano as microcontroller
