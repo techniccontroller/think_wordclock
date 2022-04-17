@@ -33,7 +33,7 @@ char date_s[11];
 #define EE_ADDRESS_TIME 10      // eeprom address for time value (persist values during power off)
 #define EE_ADDRESS_COLOR 20     // eeprom address for color value (persist values during power off)
 #define UPPER_LIGHT_THRSH 930   // upper threshold for lightsensor (above this value brightness is always 20%)
-#define LOWER_LIGHT_THRSH 830   // lower threshold for lightsensor (below this value brightness is always 100%)
+#define LOWER_LIGHT_THRSH 800   // lower threshold for lightsensor (below this value brightness is always 100%)
 #define CENTER_ROW (HEIGHT/2)   // id of center row
 #define CENTER_COL (WIDTH/2)    // id of center column
 #define NIGHTMODE_START 22      // start hour of nightmode (22 <=> 22:00)
@@ -142,6 +142,7 @@ void setup() {
   // check if RTC battery was changed
   if (rtc.lostPower() || DateTime(F(__DATE__), F(__TIME__)) > rtc.now()) {
     Serial.println("RTC lost power or RTC time is behind build time, let's set the time!");
+    printDateTime(rtc.now());
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -179,7 +180,7 @@ void loop() {
   Serial.println(valLight);
   Serial.print("Brightness: ");
   Serial.println(brightness);
-  matrix.setBrightness(brightness*2.5);
+  matrix.setBrightness(brightness*2);
 
   
   // Print current date and time
