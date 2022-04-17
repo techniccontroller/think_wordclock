@@ -20,14 +20,14 @@
   23 Apr 2012 - added UTC support
   2  Jul 2012 - minor bugfix and additional noise rejection
   29 Nov 2020 - update Time.h include <by techniccontroller@gmail.com>
+  17 Apr 2022 - add log messages, set DCFSplitTime to 150ms <by techniccontroller@gmail.com>
 */
 
-#include <DCF77.h>       //https://github.com/thijse/Arduino-Libraries/downloads
-#include <Time.h>  // https://github.com/PaulStoffregen/Time
-#include <TimeLib.h>
+#include <DCF77.h>       	// https://github.com/thijse/Arduino-DCF77   
+#include <TimeLib.h>		// https://github.com/PaulStoffregen/Time
 #include <Utils.h>
 
-#define _DCF77_VERSION 0_9_7 // software version of this library
+#define _DCF77_VERSION 1_0_0 // software version of this library
 
 using namespace Utils;
 
@@ -157,6 +157,7 @@ inline void DCF77::finalizeBuffer(void) {
   if (bufferPosition == 59) {
 		// Buffer is full
 		LogLn("BF");
+		Serial.println("DCF77: BF - Buffer is full - OK");
 		// Prepare filled buffer and time stamp for main loop
 		filledBuffer = runningBuffer;
 		filledTimestamp = now();
@@ -183,6 +184,7 @@ bool DCF77::receivedTimeUpdate(void) {
 	// if buffer is filled, we will process it and see if this results in valid parity
 	if (!processBuffer()) {
 		LogLn("Invalid parity");
+		Serial.println("DCF77: Invalid parity");
 		return false;
 	}
 	
@@ -191,6 +193,7 @@ bool DCF77::receivedTimeUpdate(void) {
 	time_t processedTime = latestupdatedTime + (now() - processingTimestamp);
 	if (processedTime<MIN_TIME || processedTime>MAX_TIME) {
 		LogLn("Time outside of bounds");
+		Serial.println("DCF77: Time outside of bounds");
 		return false;
 	}
 
@@ -198,6 +201,7 @@ bool DCF77::receivedTimeUpdate(void) {
 	time_t difference = abs(processedTime - now());
 	if(difference < 2*SECS_PER_MIN) {
 		LogLn("close to internal clock");
+		Serial.println("DCF77: close to internal clock");
 		storePreviousTime();
 		return true;
 	}
@@ -209,10 +213,12 @@ bool DCF77::receivedTimeUpdate(void) {
 	time_t shiftDifference = abs(shiftCurrent-shiftPrevious);
 	storePreviousTime();
 	if(shiftDifference < 2*SECS_PER_MIN) {
-		LogLn("time lag consistent");		
+		LogLn("time lag consistent");
+		Serial.println("DCF77: time lag consistent");
 		return true;
 	} else {
 		LogLn("time lag inconsistent");
+		Serial.println("DCF77: time lag inconsistent");
 	}
 	
 	// If lag is inconsistent, this may be because of no previous stored date 
@@ -266,6 +272,7 @@ bool DCF77::processBuffer(void) {
 	// Indicate that there is no filled, unprocessed buffer anymore
 	FilledBufferAvailable = false;  
 	
+
 	/////  End interaction with interrupt driven loop   /////
 
 	//  Calculate parities for checking buffer
@@ -276,6 +283,7 @@ bool DCF77::processBuffer(void) {
 	struct DCF77Buffer *rx_buffer;
 	rx_buffer = (struct DCF77Buffer *)(unsigned long long)&processingBuffer;
 
+	
 	// Check parities
     if (flags.parityMin == rx_buffer->P1  &&
         flags.parityHour == rx_buffer->P2 &&
@@ -329,6 +337,11 @@ time_t DCF77::getUTCTime(void)
 		return(currentTime);
 	}
 }
+
+int DCF77::getSummerTime(void) 
+{
+  return (CEST)?1:0;
+} 
 
 /**
  * Initialize parameters
