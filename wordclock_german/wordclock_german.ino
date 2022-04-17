@@ -6,22 +6,21 @@
  * changelog:
  * 03.04.2021: add DCF77 signal quality check
  * 04.04.2021: add update intervall for RTC update
+ * 18.10.2021: add nightmode
+ * 17.04.2022: fix nightmode condition, clean serial output, memory reduction
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
-#include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 
-#include <Time.h>               //https://github.com/PaulStoffregen/Time
-#include <TimeLib.h>
+#include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
+#include <TimeLib.h>            //https://github.com/PaulStoffregen/Time
 #include <Adafruit_GFX.h>       //https://github.com/adafruit/Adafruit-GFX-Library
 #include <Adafruit_NeoMatrix.h> //https://github.com/adafruit/Adafruit_NeoMatrix
-#include <Adafruit_NeoPixel.h>  //https://github.com/adafruit/Adafruit_NeoPixel
 #include <EEPROM.h>
 
 
 // definition of pins
 #define DCF_PIN 2               // Connection pin to DCF 77 device
-#define DCF_INTERRUPT 0         // Interrupt number associated with pin
 #define NEOPIXEL_PIN 6          // Connection pin to Neopixel LED strip
-int sensorPin = A6;             // analog input pin for light sensor
+#define SENSOR_PIN A6           // analog input pin for light sensor
 
 
 // char array to save time an date as string
@@ -29,17 +28,19 @@ char time_s[9];
 char date_s[11];
 
 // define parameters for the project
-const int width = 11;           // width of LED matirx
-const int height = 10+1;        // height of LED matrix + additional row for minute leds
-const int eeAddressTime = 10;   // eeprom address for time value (persist values during power off)
-const int eeAddressColor = 20;  // eeprom address for color value (persist values during power off)
-const int upperLight = 930;     // upper threshold for lightsensor (above this value brightness is always 20%)
-const int lowerLight = 830;     // lower threshold for lightsensor (below this value brightness is always 100%)
-const int centerrow = height/2; // id of center row
-const int centercol = width/2;  // id of center column
+#define WIDTH 11                // width of LED matirx
+#define HEIGHT (10+1)           // height of LED matrix + additional row for minute leds
+#define EE_ADDRESS_TIME 10      // eeprom address for time value (persist values during power off)
+#define EE_ADDRESS_COLOR 20     // eeprom address for color value (persist values during power off)
+#define UPPER_LIGHT_THRSH 930   // upper threshold for lightsensor (above this value brightness is always 20%)
+#define LOWER_LIGHT_THRSH 830   // lower threshold for lightsensor (below this value brightness is always 100%)
+#define CENTER_ROW (HEIGHT/2)   // id of center row
+#define CENTER_COL (WIDTH/2)    // id of center column
+#define NIGHTMODE_START 22      // start hour of nightmode (22 <=> 22:00)
+#define NIGHTMODE_END 6         // end hour of nightmode (6 <=> 6:00)
 
 // create DCF77 object  
-DCF77 DCF = DCF77(DCF_PIN,DCF_INTERRUPT);
+DCF77 DCF = DCF77(DCF_PIN,digitalPinToInterrupt(DCF_PIN));
 
 // create RTC object
 RTC_DS3231 rtc;
@@ -48,7 +49,7 @@ RTC_DS3231 rtc;
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 // create Adafruit_NeoMatrix object
-Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(width, height, NEOPIXEL_PIN,
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(WIDTH, HEIGHT, NEOPIXEL_PIN,
   NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
   NEO_MATRIX_ROWS    + NEO_MATRIX_ZIGZAG,
   NEO_GRB            + NEO_KHZ800);
@@ -65,14 +66,14 @@ const uint16_t colors[] = {
 
 // definition of global variables
 int valLight = 100;             // currentvalue of light sensor
-int brightness = 20;            // current brughtness for leds
-int activeColorID = 0;          // current active color mode
+uint8_t brightness = 20;        // current brughtness for leds
+uint8_t activeColorID = 0;      // current active color mode
 int offset = 0;                 // offset for colorwheel
-long updateIntervall = 120000;       // Updateintervall 2 Minuten
+long updateIntervall = 120000;  // Updateintervall 2 Minuten
 long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
 
 // representation of matrix as 2D array
-int grid[height][width] = {{0,0,0,0,0,0,0,0,0,0,0},
+uint8_t grid[HEIGHT][WIDTH] = {{0,0,0,0,0,0,0,0,0,0,0},
                             {0,0,0,0,0,0,0,0,0,0,0},
                             {0,0,0,0,0,0,0,0,0,0,0},
                             {0,0,0,0,0,0,0,0,0,0,0},
@@ -113,12 +114,12 @@ void setup() {
   }
 
   // get active color from last power cycle
-  EEPROM.get(eeAddressColor, activeColorID);
+  EEPROM.get(EE_ADDRESS_COLOR, activeColorID);
   
   // check if in the last 3 seconds was a power cycle
   // if yes, so change to next color mode
   long laststartseconds = 0;
-  EEPROM.get(eeAddressTime, laststartseconds);
+  EEPROM.get(EE_ADDRESS_TIME, laststartseconds);
   long currentseconds = rtc.now().secondstime();
   Serial.print("Startseconds: ");
   Serial.println(laststartseconds);
@@ -128,9 +129,9 @@ void setup() {
     activeColorID = (activeColorID+1)%7;
     Serial.print("change color to ");
     Serial.println(activeColorID);
-    EEPROM.put(eeAddressColor, activeColorID);
+    EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
   }
-  EEPROM.put(eeAddressTime, currentseconds);
+  EEPROM.put(EE_ADDRESS_TIME, currentseconds);
   Serial.print("active color: ");
   Serial.println(activeColorID);
 
@@ -149,28 +150,36 @@ void setup() {
   // Init LED matrix
   matrix.begin();
   matrix.setBrightness(100);
+  
+  // quick matrix test
+  for(int i=1; i<(WIDTH*HEIGHT); i++){
+    matrix.drawPixel((i-1)%WIDTH, (i-1)/HEIGHT, matrix.Color(0,0,0));
+    matrix.drawPixel(i%WIDTH, i/HEIGHT, matrix.Color(120,150,150));
+    matrix.show();
+    delay(10);
+  }
 }
 
 void loop() {
   // get light value from light sensor
-  valLight = analogRead(sensorPin);
+  valLight = analogRead(SENSOR_PIN);
 
   // calc led brightness from light value
-  if (valLight < lowerLight){
+  if (valLight < LOWER_LIGHT_THRSH){
     brightness = 100;
   }
-  else if (valLight > upperLight){
+  else if (valLight > UPPER_LIGHT_THRSH){
     brightness = 20;
   }
   else{
-    brightness = 80-((valLight-lowerLight)*1.0/(upperLight-lowerLight))*80 + 20;
+    brightness = 80-((valLight-LOWER_LIGHT_THRSH)*1.0/(UPPER_LIGHT_THRSH-LOWER_LIGHT_THRSH))*80 + 20;
   }
 
   Serial.print("Light: ");
   Serial.println(valLight);
   Serial.print("Brightness: ");
   Serial.println(brightness);
-  matrix.setBrightness(brightness);
+  matrix.setBrightness(brightness*2.5);
 
   
   // Print current date and time
@@ -188,14 +197,26 @@ void loop() {
   // convert time to a grid representation
   timeToArray(rtctime.hour(), rtctime.minute());
   // clear matrix
-  matrix.fillScreen(0);
+  matrix.fillScreen(matrix.Color(0, 0, 0));
 
+  
   // add condition if nightmode (LEDs = OFF) should be activated
-  if(rtctime.hour() > 22 && rtctime.hour() < 6){ // turn in off LEDs between 22:00 and 6:00
-    // do nothing, matrix already cleared (see previous statment)
-  } else {
-    // do the normal job and display the time on the wordclock
-
+  // turn off LEDs between NIGHTMODE_START and NIGHTMODE_END
+  uint8_t nightmode = false;
+  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END)){
+    // nightmode duration over night (e.g. 22:00 -> 6:00)
+    nightmode = true;
+    Serial.println("Nightmode1 is active -> LED are OFF");
+  }
+  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END)){
+    // nightmode duration during day (e.g. 18:00 -> 23:00)
+    nightmode = true;
+    Serial.println("Nightmode2 is active -> LED are OFF");
+  }
+  
+  if(!nightmode){
+    // nightmode is not active -> draw on Matrix, as normal
+    
     // if color mode is set to 0, a color wheel will be shown in background
     if(activeColorID == 0){
       // draw colorwheel on matrix
@@ -206,6 +227,10 @@ void loop() {
     // draw grid reprentation of time to matrix
     drawOnMatrix();
   }
+  else{
+    Serial.println("Nightmode is active -> LED are OFF");
+  }
+  
   // send the commands to the LEDs
   matrix.show();
 
@@ -220,9 +245,9 @@ void loop() {
 
 // Draws a 360 degree colorwheel on the matrix rotated by offset
 void drawCircleOnMatrix(int offset){
-  for(int r = 0; r < height; r++){
-    for(int c = 0; c < width; c ++){
-      int angle = ((int)((atan2(r - centerrow, c - centercol) * (180/M_PI)) + 180) % 360);
+  for(int r = 0; r < HEIGHT; r++){
+    for(int c = 0; c < WIDTH; c ++){
+      int angle = ((int)((atan2(r - CENTER_ROW, c - CENTER_COL) * (180/M_PI)) + 180) % 360);
       int hue =  (int)(angle * 255.0/360 + offset) % 256;
       matrix.drawPixel(c,r, Wheel(hue));
     }
@@ -328,20 +353,6 @@ void checkForNewDCFTime(DateTime now){
     DateTime currentDCFtime = DateTime(year(), month(), day(), hour(), minute(), second());
     Serial.print("Got new time from DCF:");
     printDateTime(currentDCFtime);
-    /*snprintf(time_s,sizeof(time_s),"%.2d:%.2d:%.2d" , hour(), minute(), second());
-    time_s[strlen(time_s)] = '\0';
-    snprintf(date_s,sizeof(date_s),"%.2d.%.2d.%.4d" , day(), month(), year());
-    date_s[strlen(date_s)] = '\0';
-    Serial.print(time_s); 
-    Serial.print("  "); 
-    Serial.println(date_s);*/
-
-    // calc the difference to current time of RTC
-    //int diff = abs(currentDCFtime.minute() - now.minute());
-    //int norm_diff = diff > 30 ? abs(diff-60): diff;
-    //Serial.print("Current diff: ");
-    //Serial.print(norm_diff);
-    //Serial.println(" minutes");
 
     // id update intervall is over update RTC time with DCF time
     if((millis() - updateTimer) > updateIntervall){
@@ -360,8 +371,8 @@ void gridAddPixel(uint8_t x,uint8_t y){
 // "deactivates" all pixels in grid
 void gridFlush(void){
     //Setzt an jeder Position eine 0
-    for(uint8_t i=0; i<height; i++){
-        for(uint8_t j=0; j<width; j++){
+    for(uint8_t i=0; i<HEIGHT; i++){
+        for(uint8_t j=0; j<WIDTH; j++){
             grid[i][j] = 0;
         }
     }
@@ -369,8 +380,8 @@ void gridFlush(void){
 
 // draws the grid to the ledmatrix with the current active color
 void drawOnMatrix(){
-  for(int s = 0; s < width; s++){
-    for(int z = 0; z < height; z++){
+  for(int z = 0; z < HEIGHT; z++){
+    for(int s = 0; s < WIDTH; s++){
       if(grid[z][s] != 0){
         Serial.print("1 ");
         matrix.drawPixel(s,z,colors[activeColorID]); 
@@ -385,8 +396,6 @@ void drawOnMatrix(){
 
 // Converts the given time in grid representation
 void timeToArray(uint8_t hours,uint8_t minutes){
-  Serial.println(hours);
-  Serial.println(minutes);
   
   //clear grid
   gridFlush();
