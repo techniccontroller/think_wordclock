@@ -206,12 +206,10 @@ void loop() {
   if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END)){
     // nightmode duration over night (e.g. 22:00 -> 6:00)
     nightmode = true;
-    Serial.println("Nightmode1 is active -> LED are OFF");
   }
   else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END)){
     // nightmode duration during day (e.g. 18:00 -> 23:00)
     nightmode = true;
-    Serial.println("Nightmode2 is active -> LED are OFF");
   }
   
   if(!nightmode){
