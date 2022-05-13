@@ -8,6 +8,7 @@
  * 04.04.2021: add update intervall for RTC update
  * 18.10.2021: add nightmode
  * 17.04.2022: fix nightmode condition, clean serial output, memory reduction
+ * 13.05.2022: add PIR sensor to interrupt nightmode while PIR_PIN == HIGH (FEATURE-REQUEST)
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -21,7 +22,7 @@
 #define DCF_PIN 2               // Connection pin to DCF 77 device
 #define NEOPIXEL_PIN 6          // Connection pin to Neopixel LED strip
 #define SENSOR_PIN A6           // analog input pin for light sensor
-
+#define PIR_PIN 4               // Connection pin to PIR device (HC-SR501, Jumper on H = Repeatable Trigger)
 
 // char array to save time an date as string
 char time_s[9];
@@ -204,11 +205,12 @@ void loop() {
   // add condition if nightmode (LEDs = OFF) should be activated
   // turn off LEDs between NIGHTMODE_START and NIGHTMODE_END
   uint8_t nightmode = false;
-  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END)){
+  uint8_t motionPIR = digitalRead(PIR_PIN);
+  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END) && !(motionPIR == HIGH)){
     // nightmode duration over night (e.g. 22:00 -> 6:00)
     nightmode = true;
   }
-  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END)){
+  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END) && !(motionPIR == HIGH)){
     // nightmode duration during day (e.g. 18:00 -> 23:00)
     nightmode = true;
   }
