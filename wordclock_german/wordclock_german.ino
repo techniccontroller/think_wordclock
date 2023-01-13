@@ -9,6 +9,8 @@
  * 18.10.2021: add nightmode
  * 17.04.2022: fix nightmode condition, clean serial output, memory reduction
  * 13.05.2022: add PIR sensor to interrupt nightmode while PIR_PIN == HIGH (FEATURE-REQUEST)
+ * 13.01.2023: refactoring of code to reduce memory usage (e.g. reduce length of strings in prints)
+ *             and add DCF signal quality check on every startup and display result
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -47,7 +49,7 @@ DCF77 DCF = DCF77(DCF_PIN,digitalPinToInterrupt(DCF_PIN));
 RTC_DS3231 rtc;
 
 // define mapping array for nicer printouts
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+char daysOfTheWeek[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 // create Adafruit_NeoMatrix object
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(WIDTH, HEIGHT, NEOPIXEL_PIN,
@@ -89,7 +91,7 @@ uint8_t grid[HEIGHT][WIDTH] = {{0,0,0,0,0,0,0,0,0,0,0},
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
 void printDateTime(DateTime datetime);
-void checkDCFSignal();
+int checkDCFSignal();
 int DCF77signalQuality(int pulses);
 void checkForNewDCFTime(DateTime now);
 void gridAddPixel(uint8_t x, uint8_t y);
@@ -100,12 +102,13 @@ void timeToArray(uint8_t hours, uint8_t minutes);
 void setup() {
   // enable serial output
   Serial.begin(9600);
+  Serial.println("Buildtime: ");
+  Serial.println(F(__DATE__));
+  Serial.println(F(__TIME__));
 
-  // Measure DCF signal quality
-  //checkDCFSignal();
-
-  // Init DCF
-  DCF.Start();
+  // Init LED matrix
+  matrix.begin();
+  matrix.setBrightness(100);
 
   // Init RTC
   if (! rtc.begin()) {
@@ -117,48 +120,58 @@ void setup() {
   // get active color from last power cycle
   EEPROM.get(EE_ADDRESS_COLOR, activeColorID);
   
-  // check if in the last 3 seconds was a power cycle
+  // check if in the last 20 seconds was a power cycle
   // if yes, so change to next color mode
+  // if no, do a normal start including dcf signal quality check and matrix test
   long laststartseconds = 0;
   EEPROM.get(EE_ADDRESS_TIME, laststartseconds);
   long currentseconds = rtc.now().secondstime();
-  Serial.print("Startseconds: ");
-  Serial.println(laststartseconds);
-  Serial.print("Currentseconds: ");
-  Serial.println(currentseconds);
-  if(currentseconds - laststartseconds < 10){
+  if(currentseconds - laststartseconds < 20){
     activeColorID = (activeColorID+1)%7;
     Serial.print("change color to ");
     Serial.println(activeColorID);
     EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
   }
+  else{
+
+    // measure DCF signal quality
+    int dcfquality = checkDCFSignal();
+    
+    // show DCF quality as a red/green bar
+    uint16_t dcfcolor = dcfquality < 5 ? colors[1]: colors[5];
+    for(int i=0; i<WIDTH; i++){
+      if(i < dcfquality){
+        matrix.drawPixel(i, 0, dcfcolor);
+      } else {
+        matrix.drawPixel(i, 0, matrix.Color(0,0,0));
+      }
+    }
+    matrix.show();
+    delay(2000);
+
+    // quick matrix test
+    for(int i=1; i<(WIDTH*HEIGHT); i++){
+      matrix.drawPixel((i-1)%WIDTH, (i-1)/HEIGHT, matrix.Color(0,0,0));
+      matrix.drawPixel(i%WIDTH, i/HEIGHT, matrix.Color(120,150,150));
+      matrix.show();
+      delay(10);
+    }
+  }
   EEPROM.put(EE_ADDRESS_TIME, currentseconds);
   Serial.print("active color: ");
   Serial.println(activeColorID);
 
-  Serial.println("Buildtime: ");
-  Serial.println(F(__DATE__));
-  Serial.println(F(__TIME__));
+  // Init DCF
+  DCF.Start();
 
   // check if RTC battery was changed
   if (rtc.lostPower() || DateTime(F(__DATE__), F(__TIME__)) > rtc.now()) {
-    Serial.println("RTC lost power or RTC time is behind build time, let's set the time!");
+    // RTC lost power or RTC time is behind build time, let's set the time!
+    Serial.println("RTC lost power");
     printDateTime(rtc.now());
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
-
-  // Init LED matrix
-  matrix.begin();
-  matrix.setBrightness(100);
-  
-  // quick matrix test
-  for(int i=1; i<(WIDTH*HEIGHT); i++){
-    matrix.drawPixel((i-1)%WIDTH, (i-1)/HEIGHT, matrix.Color(0,0,0));
-    matrix.drawPixel(i%WIDTH, i/HEIGHT, matrix.Color(120,150,150));
-    matrix.show();
-    delay(10);
   }
 }
 
@@ -189,7 +202,7 @@ void loop() {
   Serial.print("RTC: ");
   printDateTime(rtctime);
 
-  Serial.print("Temperature: ");
+  Serial.print("Temp: ");
   Serial.print(rtc.getTemperature());
   Serial.println(" C");
 
@@ -229,7 +242,7 @@ void loop() {
     drawOnMatrix();
   }
   else{
-    Serial.println("Nightmode is active -> LED are OFF");
+    Serial.println("Nightmode active -> LED OFF");
   }
   
   // send the commands to the LEDs
@@ -288,41 +301,48 @@ void printDateTime(DateTime datetime){
   Serial.println();
 }
 
-void checkDCFSignal(){
+int checkDCFSignal(){
   pinMode(DCF_PIN, INPUT);
-  Serial.println("Measure signal quality DCF77 (please wait)");
-  Serial.println("NO SIGNAL   <- |                                          <- MISERABLE <- |  BAD      <- |          GOOD         | -> BAD       | -> MISERABLE ->");
+  // Measure signal quality DCF77 (takes some seconds - please wait)
+  Serial.print("checkDCFSignal... ");
 
   //Do measurement over 10 impules, one impulse takes exactly one Second
   int q = DCF77signalQuality(10);
-  //If no change between HIGH and LOW was detected at the connection, 
-  //this means in 99.99% of all cases that the DCF receiver does not work 
-  //because with extremely poor reception you have changes, but you cannot evaluate them. 
-  if (!q) {Serial.print("# (Check connection!)");}
-  for (int i = 0; i < q; i++) {
-    Serial.print(">");
+  Serial.print(q);
+  Serial.print(" ");
+  if(q < 16){
+    Serial.println("(NO SIGNAL)");
+  } else if (q < 70 || q > 124){
+    Serial.println("(MISERABLE)");
+  } else if (q < 85 || q > 110){
+    Serial.println("(BAD)");
+  } else {
+    Serial.println("(GOOD)");
   }
-  Serial.println("");
   
+  // map quality value to a scale 0-10 (10 - good, 1 - bad)
+  return max(1, 10 - abs(q-100)/4);
 }
 
 // check signalquality of DCF77 receiver (code from Ralf Bohnen, 2013
 int DCF77signalQuality(int pulses) {
   int prevSensorValue=0;
-  unsigned long loopTime = 10000; //Impuls Länge genau eine Sekunde
-  //Da wir ja mitten in einem Impuls einsteigen könnten, verwerfen wir den ersten.
+  int loopTime = 10; // loop cycle length in ms
+  // Since we could enter in the middle of a pulse, we discard the first one.
   int rounds = -1; 
-  unsigned long gagingStart = 0;
-  unsigned long waitingPeriod = 0;
+  uint32_t gagingStart = 0;
+  uint32_t lastToggle = 0;
+  uint8_t toggleState = 0;
+  int waitingPeriod = 0;
   int overallChange = 0;
   int change = 0;
 
   while (true) {
-    //Unsere Schleife soll das Eingangssignal (LOW oder HIGH) 10 mal pro
-    //Sekunde messen um das sicherzustellen, messen wir dessen Ausführungszeit.
-    gagingStart = micros();
+    // Our loop shall process the input signal (LOW or HIGH) 100 times per
+    // second to ensure this, we measure its execution time.
+    gagingStart = millis();
     int sensorValue = digitalRead(DCF_PIN);
-    //Wenn von LOW nach HIGH gewechselt wird beginnt ein neuer Impuls
+    // When changing from LOW to HIGH a new pulse starts
     if (sensorValue==1 && prevSensorValue==0) { 
       rounds++;
       if (rounds > 0 && rounds < pulses + 1) {overallChange+= change;}
@@ -332,15 +352,26 @@ int DCF77signalQuality(int pulses) {
     prevSensorValue = sensorValue;
     change++;
 
-    //Ein Wechsel zwichen LOW und HIGH müsste genau alle 100 Durchläufe stattfinden
-    //wird er größer haben wir kein Empfang
-    //300 habe ich als guten Wert ermittelt, ein höherer Wert würde die Aussage festigen
-    //erhöht dann aber die Zeit.
+    // let top left led blink during measurement
+    if(millis() - lastToggle > 200){
+      lastToggle = millis();
+      matrix.drawPixel(0,0, toggleState ? colors[6]: matrix.Color(0,0,0));
+      matrix.show();
+      toggleState = !toggleState;
+    }
+
+    // A change between LOW and HIGH should take place exactly every 100 passes, 
+    // if it is greater we have no reception.
+    // I have determined 300 as a good value, a higher value would strengthen 
+    // the statement but then increases the time.
     if (change > 300) {return 0;}
-    //Berechnen und anpassen der Ausführungszeit
-    waitingPeriod = loopTime - (micros() - gagingStart);
-    delayMicroseconds(waitingPeriod);
+    // Calculate and adjust the execution time
+    waitingPeriod = loopTime - (millis() - gagingStart);
+    if(waitingPeriod <= loopTime){
+      delay(waitingPeriod);
+    }
   }
+
 }
 
 // Checks for new time from DCF77 and updates RTC time
