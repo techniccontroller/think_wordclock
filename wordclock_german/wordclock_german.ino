@@ -75,18 +75,8 @@ int offset = 0;                 // offset for colorwheel
 long updateIntervall = 120000;  // Updateintervall 2 Minuten
 long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
 
-// representation of matrix as 2D array
-uint8_t grid[HEIGHT][WIDTH] = {{0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0},
-                            {0,0,0,0,0,0,0,0,0,0,0}};
+// representation of matrix as byte array (1 led = 1 bit) 
+uint8_t grid[HEIGHT*WIDTH/8 + 1] = {0};
 
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
@@ -98,6 +88,8 @@ void gridAddPixel(uint8_t x, uint8_t y);
 void gridFlush(void);
 void drawOnMatrix(void);
 void timeToArray(uint8_t hours, uint8_t minutes);
+uint8_t readGrid(uint8_t x, uint8_t y);
+void writeGrid(uint8_t x, uint8_t y, uint8_t val);
 
 void setup() {
   // enable serial output
@@ -396,8 +388,8 @@ void checkForNewDCFTime(DateTime now){
 }
 
 // "activates" a pixel in grid
-void gridAddPixel(uint8_t x,uint8_t y){
-    grid[y][x] = 1;
+void gridAddPixel(uint8_t x, uint8_t y){
+    writeGrid(x, y, 1);
 }
 
 // "deactivates" all pixels in grid
@@ -405,7 +397,7 @@ void gridFlush(void){
     //Setzt an jeder Position eine 0
     for(uint8_t i=0; i<HEIGHT; i++){
         for(uint8_t j=0; j<WIDTH; j++){
-            grid[i][j] = 0;
+            writeGrid(j, i, 0);
         }
     }
 }
@@ -414,7 +406,7 @@ void gridFlush(void){
 void drawOnMatrix(){
   for(int z = 0; z < HEIGHT; z++){
     for(int s = 0; s < WIDTH; s++){
-      if(grid[z][s] != 0){
+      if(readGrid(s, z) != 0){
         Serial.print("1 ");
         matrix.drawPixel(s,z,colors[activeColorID]); 
       }
@@ -792,4 +784,19 @@ void timeToArray(uint8_t hours,uint8_t minutes){
   }
   
   Serial.println();
+}
+
+uint8_t readGrid(uint8_t x, uint8_t y){
+  uint16_t id = x*WIDTH + y;
+  uint8_t byteId = id / 8;
+  uint8_t bitId = id % 8;
+  return (grid[byteId] >> bitId) & 0x1;
+}
+
+void writeGrid(uint8_t x, uint8_t y, uint8_t val){
+  if(val > 0) val = 0x1;
+  uint16_t id = x*WIDTH + y;
+  uint8_t byteId = id / 8;
+  uint8_t bitId = id % 8;
+  grid[byteId] = (val << bitId) | grid[byteId];
 }
