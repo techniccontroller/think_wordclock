@@ -794,9 +794,13 @@ uint8_t readGrid(uint8_t x, uint8_t y){
 }
 
 void writeGrid(uint8_t x, uint8_t y, uint8_t val){
-  if(val > 0) val = 0x1;
   uint16_t id = x*WIDTH + y;
   uint8_t byteId = id / 8;
   uint8_t bitId = id % 8;
-  grid[byteId] = (val << bitId) | grid[byteId];
+  
+  if(val > 0){
+    grid[byteId] = (0x1 << bitId) | grid[byteId];
+  } else {
+    grid[byteId] = !(0x1 << bitId) & grid[byteId];
+  }
 }
