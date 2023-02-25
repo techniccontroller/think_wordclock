@@ -11,6 +11,7 @@
  * 13.05.2022: add PIR sensor to interrupt nightmode while PIR_PIN == HIGH (FEATURE-REQUEST)
  * 13.01.2023: refactoring of code to reduce memory usage (e.g. reduce length of strings in prints)
  *             and add DCF signal quality check on every startup and display result
+ * 25.02.2023: allow easy change the number of colors in the array colors[]
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -119,7 +120,8 @@ void setup() {
   EEPROM.get(EE_ADDRESS_TIME, laststartseconds);
   long currentseconds = rtc.now().secondstime();
   if(currentseconds - laststartseconds < 20){
-    activeColorID = (activeColorID+1)%7;
+    int numColors = sizeof(colors)/sizeof(colors[0]);
+    activeColorID = (activeColorID+1)%numColors;
     Serial.print("change color to ");
     Serial.println(activeColorID);
     EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
