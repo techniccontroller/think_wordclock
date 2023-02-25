@@ -130,7 +130,7 @@ void setup() {
     int dcfquality = checkDCFSignal();
     
     // show DCF quality as a red/green bar
-    uint16_t dcfcolor = dcfquality < 5 ? colors[1]: colors[5];
+    uint16_t dcfcolor = dcfquality < 5 ? matrix.Color(255, 0, 0): matrix.Color(0, 255, 0);
     for(int i=0; i<WIDTH; i++){
       if(i < dcfquality){
         matrix.drawPixel(i, 0, dcfcolor);
@@ -344,10 +344,10 @@ int DCF77signalQuality(int pulses) {
     prevSensorValue = sensorValue;
     change++;
 
-    // let top left led blink during measurement
+    // let top left led blink blue during measurement
     if(millis() - lastToggle > 200){
       lastToggle = millis();
-      matrix.drawPixel(0,0, toggleState ? colors[6]: matrix.Color(0,0,0));
+      matrix.drawPixel(0,0, toggleState ? matrix.Color(0, 0, 255): matrix.Color(0,0,0));
       matrix.show();
       toggleState = !toggleState;
     }
