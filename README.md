@@ -1,7 +1,7 @@
-# Think Wordclock
+# Wordclock with Arduino and NeoPixel
 Arduino source code for my DIY Wordclock.
 
-<img src="https://techniccontroller.de/wp-content/uploads/1060178-938x1024.jpg" width="400px" title="Wordclock"/>
+<img src="https://techniccontroller.com/wp-content/uploads/1060178-938x1024.jpg" width="400px" title="Wordclock"/>
 
 
 
@@ -17,8 +17,6 @@ This project includes the following features:
 
 ## Full Tutorial
 The full tutorial on how to build this Wordclock is published on 
-
-https://think-thi.de/2020/12/08/diy-wortuhr-mit-arduino-und-neopixel/
 
 https://techniccontroller.com/word-clock-with-arduino-and-neopixel/
 
