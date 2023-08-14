@@ -12,6 +12,7 @@
  * 13.01.2023: refactoring of code to reduce memory usage (e.g. reduce length of strings in prints)
  *             and add DCF signal quality check on every startup and display result
  * 25.02.2023: allow easy change the number of colors in the array colors[]
+ * 14.08.2023: add hardware button to switch colormode
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -26,6 +27,7 @@
 #define NEOPIXEL_PIN 6          // Connection pin to Neopixel LED strip
 #define SENSOR_PIN A6           // analog input pin for light sensor
 #define PIR_PIN 4               // Connection pin to PIR device (HC-SR501, Jumper on H = Repeatable Trigger)
+#define BTN_PIN 7               // Pin for additional hardware button to switch colormode
 
 // char array to save time an date as string
 char time_s[9];
@@ -99,6 +101,8 @@ void setup() {
   Serial.println(F(__DATE__));
   Serial.println(F(__TIME__));
 
+  pinMode(BTN_PIN, INPUT_PULLUP);
+
   // Init LED matrix
   matrix.begin();
   matrix.setBrightness(100);
@@ -114,17 +118,13 @@ void setup() {
   EEPROM.get(EE_ADDRESS_COLOR, activeColorID);
   
   // check if in the last 20 seconds was a power cycle
-  // if yes, so change to next color mode
+  // if yes, do quick startup
   // if no, do a normal start including dcf signal quality check and matrix test
   long laststartseconds = 0;
   EEPROM.get(EE_ADDRESS_TIME, laststartseconds);
   long currentseconds = rtc.now().secondstime();
   if(currentseconds - laststartseconds < 20){
-    int numColors = sizeof(colors)/sizeof(colors[0]);
-    activeColorID = (activeColorID+1)%numColors;
-    Serial.print("change color to ");
-    Serial.println(activeColorID);
-    EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
+    // do nothing
   }
   else{
 
@@ -242,11 +242,30 @@ void loop() {
   // send the commands to the LEDs
   matrix.show();
 
+  int waitcounter = 0;
+
   // change depending on color mode the refreshing time of clock
   if(activeColorID == 0){
-    delay(500);
+    waitcounter = 1;
   } else {
-    delay(5000);
+    waitcounter = 10;
+  }
+
+  // wait and regulary check button state
+  // if falling edge is detected, switch colormode
+  static uint8_t lastButtonState = LOW;
+  while(waitcounter > 0){
+    waitcounter--;
+    delay(500);
+    uint8_t buttonState = digitalRead(BTN_PIN);
+    if(lastButtonState == HIGH && buttonState == LOW){
+      int numColors = sizeof(colors)/sizeof(colors[0]);
+      activeColorID = (activeColorID+1)%numColors;
+      Serial.print("change color to ");
+      Serial.println(activeColorID);
+      EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
+    }
+    lastButtonState = buttonState;
   }
   
 }
