@@ -417,7 +417,7 @@ void drawOnMatrix(){
             // to slow down this change, increment the dynamicColorValue only every second or third time
             // e.g. the following line is only executed every third time -> color changes within 63 minutes
             static int temp = 0; if(temp++ % 3 == 0) dynamicColorValue++;
-            matrix.drawPixel(s,z,Wheel(dynamicColorValue++));
+            matrix.drawPixel(s,z,Wheel(dynamicColorValue));
         } else {
             matrix.drawPixel(s,z,colors[activeColorID]);
         }
