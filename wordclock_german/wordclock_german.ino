@@ -12,6 +12,7 @@
  * 13.01.2023: refactoring of code to reduce memory usage (e.g. reduce length of strings in prints)
  *             and add DCF signal quality check on every startup and display result
  * 25.02.2023: allow easy change the number of colors in the array colors[]
+ * 02.11.2023: add dynamic color in mode 1 (color changes within 63 minutes from r -> g -> b -> r -> ...)
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -73,8 +74,9 @@ int valLight = 100;             // currentvalue of light sensor
 uint8_t brightness = 20;        // current brughtness for leds
 uint8_t activeColorID = 0;      // current active color mode
 int offset = 0;                 // offset for colorwheel
-long updateIntervall = 120000;  // Updateintervall 2 Minuten
-long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
+long updateIntervall = 120000;  // update interval 2 minutes
+long updateTimer = 0;           // cache for the waiting time
+uint8_t dynamicColorValue = 0;  // dynamic color value for colorwheel
 
 // representation of matrix as byte array (1 led = 1 bit) 
 uint8_t grid[HEIGHT*WIDTH/8 + 1] = {0};
@@ -410,7 +412,15 @@ void drawOnMatrix(){
     for(int s = 0; s < WIDTH; s++){
       if(readGrid(s, z) != 0){
         Serial.print("1 ");
-        matrix.drawPixel(s,z,colors[activeColorID]); 
+        if(activeColorID == 1){
+            // if color mode is set to 1, the color changes within 21 minutes from r -> g -> b -> r -> ...
+            // to slow down this change, increment the dynamicColorValue only every second or third time
+            // e.g. the following line is only executed every third time -> color changes within 63 minutes
+            static int temp = 0; if(temp++ % 3 == 0) dynamicColorValue++;
+            matrix.drawPixel(s,z,Wheel(dynamicColorValue++));
+        } else {
+            matrix.drawPixel(s,z,colors[activeColorID]);
+        }
       }
       else{
         Serial.print("0 ");
