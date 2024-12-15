@@ -20,6 +20,48 @@ The full tutorial on how to build this Wordclock is published on
 
 https://techniccontroller.com/word-clock-with-arduino-and-neopixel/
 
+## Installation
+
+1. Download the code (ZIP) and unzip it, copy the complete unzipped folder into your sketchbock path (found in ArduinoIDE under File->Settings).
+2. Start Arduino IDE and open the file `wordclock_german.ino` via **File -> Open ...**.
+3. Now the libraries must be installed. To avoid complications, I recommend simply copying all folders from the `libraries` project folder into the `libraries` folder of the sketchbook path. You can also install the libraries manually via the library manager of the IDE, but the time library of PaulStoffregen is missing, you still have to copy it yourself.
+
+    Your folder structure should look like this:
+    ```
+    ./MySketchbookLocation 
+    │
+    └───libraries
+    │   └───Adafruit_BusIO
+    │   └───Adafruit_GFX_Library
+    │   └───Adafruit_NeoMatrix
+    │   └───Adafruit_NeoPixel
+    │   └───DCF77
+    |   └───RTClib
+    |   └───Time
+    │   
+    └───think_wordclock
+        └───libraries
+        │   └───Adafruit_BusIO
+        │   └───Adafruit_GFX_Library
+        │   └───Adafruit_NeoMatrix
+        │   └───Adafruit_NeoPixel
+        │   └───DCF77
+        |   └───RTClib
+        |   └───Time
+        │   
+        └───wordclock_german
+        │   └───wordclock_german.ino
+        │
+        └───pictures
+        |   └───(...)
+        └───README.md 
+    ```
+
+4. Connect your Arduino Nano to your computer.
+5. In Arduino IDE select the correct board (Arduino Nano) and serial port.
+6. Compile and upload code via **Sketch -> Upload**.
+
+
 ## Used Libraries
 To use this source code, you need to install the following libraries in Arduino IDE.
 I have also included the versions of the libraries I use in this repository. 
