@@ -789,14 +789,14 @@ void timeToArray(uint8_t hours,uint8_t minutes){
 }
 
 uint8_t readGrid(uint8_t x, uint8_t y){
-  uint16_t id = x*WIDTH + y;
+  uint16_t id = y*WIDTH + x;
   uint8_t byteId = id / 8;
   uint8_t bitId = id % 8;
   return (grid[byteId] >> bitId) & 0x1;
 }
 
 void writeGrid(uint8_t x, uint8_t y, uint8_t val){
-  uint16_t id = x*WIDTH + y;
+  uint16_t id = y*WIDTH + x;
   uint8_t byteId = id / 8;
   uint8_t bitId = id % 8;
   
