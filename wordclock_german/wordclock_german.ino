@@ -12,6 +12,7 @@
  * 13.01.2023: refactoring of code to reduce memory usage (e.g. reduce length of strings in prints)
  *             and add DCF signal quality check on every startup and display result
  * 25.02.2023: allow easy change the number of colors in the array colors[]
+ * 01.01.2025: make PIR sensor optional via define condition
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
@@ -26,6 +27,7 @@
 #define NEOPIXEL_PIN 6          // Connection pin to Neopixel LED strip
 #define SENSOR_PIN A6           // analog input pin for light sensor
 #define PIR_PIN 4               // Connection pin to PIR device (HC-SR501, Jumper on H = Repeatable Trigger)
+#define PIR_SENSOR 0            // 1 = PIR sensor is used, 0 = PIR sensor is not used
 
 // char array to save time an date as string
 char time_s[9];
@@ -98,6 +100,15 @@ void setup() {
   Serial.println("Buildtime: ");
   Serial.println(F(__DATE__));
   Serial.println(F(__TIME__));
+
+  if(PIR_SENSOR){
+    Serial.println("PIR sensor is used");
+    // Init PIR sensor pin
+    pinMode(PIR_PIN, INPUT);
+  }
+  else{
+    Serial.println("PIR sensor is not used");
+  }
 
   // Init LED matrix
   matrix.begin();
@@ -212,12 +223,12 @@ void loop() {
   // add condition if nightmode (LEDs = OFF) should be activated
   // turn off LEDs between NIGHTMODE_START and NIGHTMODE_END
   uint8_t nightmode = false;
-  uint8_t motionPIR = digitalRead(PIR_PIN);
-  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END) && !(motionPIR == HIGH)){
+  bool motionPIRdetected = (digitalRead(PIR_PIN) == HIGH) && PIR_SENSOR;
+  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END) && !motionPIRdetected){
     // nightmode duration over night (e.g. 22:00 -> 6:00)
     nightmode = true;
   }
-  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END) && !(motionPIR == HIGH)){
+  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END) && !motionPIRdetected){
     // nightmode duration during day (e.g. 18:00 -> 23:00)
     nightmode = true;
   }
