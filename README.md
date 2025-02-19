@@ -69,7 +69,7 @@ In case of any problems, please use the versions I've provided.
 
 - https://github.com/adafruit/RTClib
 - https://github.com/PaulStoffregen/Time
-- https://github.com/thijse/Arduino-DCF77
+- ~~https://github.com/thijse/Arduino-DCF77~~ -> please use the library in the folder [libraries](./libraries/)
 - https://github.com/adafruit/Adafruit-GFX-Library
 - https://github.com/adafruit/Adafruit_NeoPixel
 - https://github.com/adafruit/Adafruit_NeoMatrix
