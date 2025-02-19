@@ -15,7 +15,7 @@
  * 01.01.2025: make PIR sensor optional via define condition
  */
 #include "RTClib.h"             //https://github.com/adafruit/RTClib
-#include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77                
+#include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 -> please use files provided in folder "libraries"                
 #include <TimeLib.h>            //https://github.com/PaulStoffregen/Time
 #include <Adafruit_GFX.h>       //https://github.com/adafruit/Adafruit-GFX-Library
 #include <Adafruit_NeoMatrix.h> //https://github.com/adafruit/Adafruit_NeoMatrix
