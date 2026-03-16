@@ -13,8 +13,8 @@
  *             and add DCF signal quality check on every startup and display result
  * 25.02.2023: allow easy change the number of colors in the array colors[]
  * 01.01.2025: make PIR sensor optional via define condition
+ * 16.03.2026: remove RTC dependency, use DCF77 with internal CPU timekeeping (TimeLib)
  */
-#include "RTClib.h"             //https://github.com/adafruit/RTClib
 #include "DCF77.h"              //https://github.com/thijse/Arduino-DCF77 -> please use files provided in folder "libraries"                
 #include <TimeLib.h>            //https://github.com/PaulStoffregen/Time
 #include <Adafruit_GFX.h>       //https://github.com/adafruit/Adafruit-GFX-Library
@@ -29,14 +29,9 @@
 #define PIR_PIN 4               // Connection pin to PIR device (HC-SR501, Jumper on H = Repeatable Trigger)
 #define PIR_SENSOR 0            // 1 = PIR sensor is used, 0 = PIR sensor is not used
 
-// char array to save time an date as string
-char time_s[9];
-char date_s[11];
-
 // define parameters for the project
 #define WIDTH 11                // width of LED matirx
 #define HEIGHT (10+1)           // height of LED matrix + additional row for minute leds
-#define EE_ADDRESS_TIME 10      // eeprom address for time value (persist values during power off)
 #define EE_ADDRESS_COLOR 20     // eeprom address for color value (persist values during power off)
 #define UPPER_LIGHT_THRSH 930   // upper threshold for lightsensor (above this value brightness is always 20%)
 #define LOWER_LIGHT_THRSH 800   // lower threshold for lightsensor (below this value brightness is always 100%)
@@ -47,12 +42,6 @@ char date_s[11];
 
 // create DCF77 object  
 DCF77 DCF = DCF77(DCF_PIN,digitalPinToInterrupt(DCF_PIN));
-
-// create RTC object
-RTC_DS3231 rtc;
-
-// define mapping array for nicer printouts
-char daysOfTheWeek[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 // create Adafruit_NeoMatrix object
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(WIDTH, HEIGHT, NEOPIXEL_PIN,
@@ -75,18 +64,15 @@ int valLight = 100;             // currentvalue of light sensor
 uint8_t brightness = 20;        // current brughtness for leds
 uint8_t activeColorID = 0;      // current active color mode
 int offset = 0;                 // offset for colorwheel
-long updateIntervall = 120000;  // Updateintervall 2 Minuten
-long updateTimer = 0;           // Zwischenspeicher für die Wartezeit
 
 // representation of matrix as byte array (1 led = 1 bit) 
 uint8_t grid[HEIGHT*WIDTH/8 + 1] = {0};
 
 // function prototypes
 void timeToArray(uint8_t hours, uint8_t minutes);
-void printDateTime(DateTime datetime);
 int checkDCFSignal();
 int DCF77signalQuality(int pulses);
-void checkForNewDCFTime(DateTime now);
+void checkForNewDCFTime();
 void gridAddPixel(uint8_t x, uint8_t y);
 void gridFlush(void);
 void drawOnMatrix(void);
@@ -114,70 +100,44 @@ void setup() {
   matrix.begin();
   matrix.setBrightness(100);
 
-  // Init RTC
-  if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
-    abort();
-  }
-
   // get active color from last power cycle
   EEPROM.get(EE_ADDRESS_COLOR, activeColorID);
   
-  // check if in the last 20 seconds was a power cycle
-  // if yes, so change to next color mode
-  // if no, do a normal start including dcf signal quality check and matrix test
-  long laststartseconds = 0;
-  EEPROM.get(EE_ADDRESS_TIME, laststartseconds);
-  long currentseconds = rtc.now().secondstime();
-  if(currentseconds - laststartseconds < 20){
-    int numColors = sizeof(colors)/sizeof(colors[0]);
-    activeColorID = (activeColorID+1)%numColors;
-    Serial.print("change color to ");
-    Serial.println(activeColorID);
-    EEPROM.put(EE_ADDRESS_COLOR, activeColorID);
-  }
-  else{
-
-    // measure DCF signal quality
-    int dcfquality = checkDCFSignal();
-    
-    // show DCF quality as a red/green bar
-    uint16_t dcfcolor = dcfquality < 5 ? matrix.Color(255, 0, 0): matrix.Color(0, 255, 0);
-    for(int i=0; i<WIDTH; i++){
-      if(i < dcfquality){
-        matrix.drawPixel(i, 0, dcfcolor);
-      } else {
-        matrix.drawPixel(i, 0, matrix.Color(0,0,0));
-      }
+  // Always do startup sequence (DCF signal quality check and matrix test)
+  // measure DCF signal quality
+  int dcfquality = checkDCFSignal();
+  
+  // show DCF quality as a red/green bar
+  uint16_t dcfcolor = dcfquality < 5 ? matrix.Color(255, 0, 0): matrix.Color(0, 255, 0);
+  for(int i=0; i<WIDTH; i++){
+    if(i < dcfquality){
+      matrix.drawPixel(i, 0, dcfcolor);
+    } else {
+      matrix.drawPixel(i, 0, matrix.Color(0,0,0));
     }
+  }
+  matrix.show();
+  delay(2000);
+
+  // quick matrix test
+  for(int i=1; i<(WIDTH*HEIGHT); i++){
+    matrix.drawPixel((i-1)%WIDTH, (i-1)/HEIGHT, matrix.Color(0,0,0));
+    matrix.drawPixel(i%WIDTH, i/HEIGHT, matrix.Color(120,150,150));
     matrix.show();
-    delay(2000);
-
-    // quick matrix test
-    for(int i=1; i<(WIDTH*HEIGHT); i++){
-      matrix.drawPixel((i-1)%WIDTH, (i-1)/HEIGHT, matrix.Color(0,0,0));
-      matrix.drawPixel(i%WIDTH, i/HEIGHT, matrix.Color(120,150,150));
-      matrix.show();
-      delay(10);
-    }
+    delay(10);
   }
-  EEPROM.put(EE_ADDRESS_TIME, currentseconds);
+
   Serial.print("active color: ");
   Serial.println(activeColorID);
 
+  // Initialize time (will be updated by DCF77)
+  Serial.println("Setting initial time");
+  // We'll use a simple approach - set to 12:00:00 initially
+  // DCF will update it to correct time when signal is received
+  setTime(12, 0, 0, 1, 1, 2025);
+
   // Init DCF
   DCF.Start();
-
-  // check if RTC battery was changed
-  if (rtc.lostPower() || DateTime(F(__DATE__), F(__TIME__)) > rtc.now()) {
-    // RTC lost power or RTC time is behind build time, let's set the time!
-    Serial.println("RTC lost power");
-    printDateTime(rtc.now());
-    // When time needs to be set on a new device, or after a power loss, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
 }
 
 void loop() {
@@ -202,20 +162,25 @@ void loop() {
   matrix.setBrightness(brightness*2);
 
   
-  // Print current date and time
-  DateTime rtctime = rtc.now();
-  Serial.print("RTC: ");
-  printDateTime(rtctime);
-
-  Serial.print("Temp: ");
-  Serial.print(rtc.getTemperature());
-  Serial.println(" C");
+  // Print current date and time from TimeLib
+  Serial.print("Time: ");
+  Serial.print(year());
+  Serial.print('/');
+  Serial.print(month());
+  Serial.print('/');
+  Serial.print(day());
+  Serial.print(" ");
+  Serial.print(hour());
+  Serial.print(':');
+  Serial.print(minute());
+  Serial.print(':');
+  Serial.println(second());
 
   // check for a new time on the DCF receiver
-  checkForNewDCFTime(rtctime);
+  checkForNewDCFTime();
 
   // convert time to a grid representation
-  timeToArray(rtctime.hour(), rtctime.minute());
+  timeToArray(hour(), minute());
   // clear matrix
   matrix.fillScreen(matrix.Color(0, 0, 0));
 
@@ -224,11 +189,11 @@ void loop() {
   // turn off LEDs between NIGHTMODE_START and NIGHTMODE_END
   uint8_t nightmode = false;
   bool motionPIRdetected = (digitalRead(PIR_PIN) == HIGH) && PIR_SENSOR;
-  if(NIGHTMODE_START > NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START || rtctime.hour() < NIGHTMODE_END) && !motionPIRdetected){
+  if(NIGHTMODE_START > NIGHTMODE_END && (hour() >= NIGHTMODE_START || hour() < NIGHTMODE_END) && !motionPIRdetected){
     // nightmode duration over night (e.g. 22:00 -> 6:00)
     nightmode = true;
   }
-  else if(NIGHTMODE_START < NIGHTMODE_END && (rtctime.hour() >= NIGHTMODE_START && rtctime.hour() < NIGHTMODE_END) && !motionPIRdetected){
+  else if(NIGHTMODE_START < NIGHTMODE_END && (hour() >= NIGHTMODE_START && hour() < NIGHTMODE_END) && !motionPIRdetected){
     // nightmode duration during day (e.g. 18:00 -> 23:00)
     nightmode = true;
   }
@@ -286,24 +251,6 @@ uint32_t Wheel(byte WheelPos) {
   }
   WheelPos -= 170;
   return matrix.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
-}
-
-// Prints given date and time to serial
-void printDateTime(DateTime datetime){
-  Serial.print(datetime.year(), DEC);
-  Serial.print('/');
-  Serial.print(datetime.month(), DEC);
-  Serial.print('/');
-  Serial.print(datetime.day(), DEC);
-  Serial.print(" (");
-  Serial.print(daysOfTheWeek[datetime.dayOfTheWeek()]);
-  Serial.print(") ");
-  Serial.print(datetime.hour(), DEC);
-  Serial.print(':');
-  Serial.print(datetime.minute(), DEC);
-  Serial.print(':');
-  Serial.print(datetime.second(), DEC);
-  Serial.println();
 }
 
 int checkDCFSignal(){
@@ -379,24 +326,28 @@ int DCF77signalQuality(int pulses) {
 
 }
 
-// Checks for new time from DCF77 and updates RTC time
-void checkForNewDCFTime(DateTime now){
+// Checks for new time from DCF77 and updates system time
+void checkForNewDCFTime(){
   // check if new time from DCF77 is available
   time_t DCFtime = DCF.getTime(); 
   if (DCFtime!=0)
   {
+    // Update system time with DCF time
     setTime(DCFtime);
+    
     // print new time from DCF77
-    DateTime currentDCFtime = DateTime(year(), month(), day(), hour(), minute(), second());
-    Serial.print("Got new time from DCF:");
-    printDateTime(currentDCFtime);
-
-    // id update intervall is over update RTC time with DCF time
-    if((millis() - updateTimer) > updateIntervall){
-      Serial.println("Adjust RTC time");
-      rtc.adjust(currentDCFtime);
-      updateTimer = millis();
-    }
+    Serial.print("Got new time from DCF: ");
+    Serial.print(year());
+    Serial.print('/');
+    Serial.print(month());
+    Serial.print('/');
+    Serial.print(day());
+    Serial.print(" ");
+    Serial.print(hour());
+    Serial.print(':');
+    Serial.print(minute());
+    Serial.print(':');
+    Serial.println(second());
   }
 }
 
